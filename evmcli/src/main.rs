@@ -65,6 +65,32 @@ async fn main() {
             evmcli::commands::abi::run(&ctx, address).await
                 .map(|r| output::render(&r, format))
         }
+        Commands::Logs { ref address, ref topic0, ref participant, from_block, to_block, ref event } => {
+            evmcli::commands::logs::run(&ctx,
+                address.as_deref(), topic0.as_deref(), participant.as_deref(),
+                from_block, to_block, event.as_deref(),
+            ).await.map(|r| output::render(&r, format))
+        }
+        Commands::Transfers { ref address, ref token_type } => {
+            evmcli::commands::transfers::run(&ctx, address, token_type).await
+                .map(|r| output::render(&r, format))
+        }
+        Commands::Storage { ref address, ref slot, block } => {
+            evmcli::commands::storage::run(&ctx, address, slot, block).await
+                .map(|r| output::render(&r, format))
+        }
+        Commands::Nonce { ref address } => {
+            evmcli::commands::nonce::run(&ctx, address).await
+                .map(|r| output::render(&r, format))
+        }
+        Commands::Code { ref address } => {
+            evmcli::commands::code::run(&ctx, address).await
+                .map(|r| output::render(&r, format))
+        }
+        Commands::Trace { ref hash } => {
+            evmcli::commands::trace::run(&ctx, hash).await
+                .map(|r| output::render(&r, format))
+        }
         Commands::Bench { iterations, warmup, ref address } => {
             evmcli::commands::bench::run(&ctx, iterations, warmup, address).await
                 .map(|r| output::render(&r, format))

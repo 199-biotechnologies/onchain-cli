@@ -79,6 +79,66 @@ pub enum Commands {
         address: String,
     },
 
+    /// Get event logs (Transfer, Swap, etc.)
+    Logs {
+        /// Contract address to filter logs from
+        #[arg(long)]
+        address: Option<String>,
+        /// Event topic0 hash (e.g. Transfer topic)
+        #[arg(long)]
+        topic0: Option<String>,
+        /// Filter by a specific address in topic1 or topic2
+        #[arg(long)]
+        participant: Option<String>,
+        /// Start block (default: latest - 1000)
+        #[arg(long)]
+        from_block: Option<u64>,
+        /// End block (default: latest)
+        #[arg(long)]
+        to_block: Option<u64>,
+        /// Shorthand: --event transfer|approval|swap
+        #[arg(long)]
+        event: Option<String>,
+    },
+
+    /// Get token transfer history from Blockscout
+    Transfers {
+        /// Address to get transfers for
+        address: String,
+        /// Filter by token type: erc20, erc721, erc1155
+        #[arg(long, default_value = "erc20")]
+        token_type: String,
+    },
+
+    /// Read raw storage slot
+    Storage {
+        /// Contract address
+        address: String,
+        /// Storage slot (hex, e.g. 0x0)
+        slot: String,
+        /// Block number (default: latest)
+        #[arg(long)]
+        block: Option<u64>,
+    },
+
+    /// Get transaction count (nonce) for an address
+    Nonce {
+        /// Address
+        address: String,
+    },
+
+    /// Check if address is EOA or contract
+    Code {
+        /// Address to check
+        address: String,
+    },
+
+    /// Trace internal calls of a transaction (requires archive node)
+    Trace {
+        /// Transaction hash
+        hash: String,
+    },
+
     /// Run performance benchmark
     Bench {
         /// Number of iterations

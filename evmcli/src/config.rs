@@ -34,7 +34,7 @@ pub const CHAINS: &[ChainConfig] = &[
     ChainConfig {
         name: "ethereum",
         chain_id: 1,
-        public_rpc: "https://eth.llamarpc.com",
+        public_rpc: "https://ethereum-rpc.publicnode.com",
         local_rpc: "http://127.0.0.1:8545",
         explorer_url: "eth.blockscout.com",
         native_symbol: "ETH",
