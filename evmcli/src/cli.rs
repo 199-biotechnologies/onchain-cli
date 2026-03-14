@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "evmcli", version, about = "Fast EVM CLI toolkit")]
+#[command(name = "evmcli", version, about = "Fast EVM CLI toolkit", after_help = EXAMPLES)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -151,4 +151,45 @@ pub enum Commands {
         #[arg(long, default_value = "0x4a0aCaC60321d89E8d4d01fA09318849Cb6a586A")]
         address: String,
     },
+
+    /// Show investigation examples and forensic workflow
+    Examples,
 }
+
+const EXAMPLES: &str = r#"
+EXAMPLES:
+  # Basic queries
+  evmcli balance 0xADDR                          # ETH balance
+  evmcli balance 0xADDR --token 0xUSDC           # ERC20 balance
+  evmcli tx 0xHASH                               # Transaction details
+  evmcli receipt 0xHASH                           # Receipt + logs count
+  evmcli gas                                      # Current gas prices
+  evmcli call 0xCONTRACT "owner()(address)"      # Read contract
+
+  # Forensic investigation
+  evmcli code 0xADDR                              # EOA or contract?
+  evmcli nonce 0xADDR                             # How many TXs sent?
+  evmcli transfers 0xADDR                         # Token transfer history (funding trail)
+  evmcli txs 0xADDR                               # Transaction list from explorer
+  evmcli logs --event transfer --participant 0xADDR --from-block 19000000
+  evmcli trace 0xHASH                             # Internal calls (needs archive node)
+
+  # Decode + ABI
+  evmcli decode 0xCALLDATA                        # Decode function call
+  evmcli abi 0xCONTRACT                           # Fetch + cache contract ABI
+
+  # Multi-chain
+  evmcli --network ethereum balance 0xADDR        # Query Ethereum
+  evmcli --network base balance 0xADDR            # Query Base
+  evmcli --rpc-url http://localhost:8547 balance 0xADDR  # Custom RPC
+
+FORENSIC WORKFLOW (investigate a suspicious wallet):
+  1. evmcli code 0xSUSPECT              # Is it EOA or contract?
+  2. evmcli nonce 0xSUSPECT             # Fresh wallet (nonce 0-2) = likely created for this
+  3. evmcli transfers 0xSUSPECT         # Where did funds come from? (Binance? Tornado?)
+  4. evmcli txs 0xSUSPECT              # Full transaction history
+  5. evmcli tx 0xSUSPICIOUS_TX          # Details of the key transaction
+  6. evmcli receipt 0xSUSPICIOUS_TX     # Status + gas + logs count
+  7. evmcli trace 0xSUSPICIOUS_TX       # Internal calls (what contracts were hit?)
+  8. For each funder address from step 3, repeat steps 1-4 (multi-hop tracing)
+"#;

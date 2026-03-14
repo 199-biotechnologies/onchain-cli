@@ -20,6 +20,12 @@ async fn main() {
 
     let start = Instant::now();
 
+    // Handle examples command before building context (no RPC needed)
+    if matches!(cli.command, Commands::Examples) {
+        println!("{}", evmcli::cli::EXAMPLES);
+        return;
+    }
+
     let ctx = match AppContext::new(&cli).await {
         Ok(ctx) => ctx,
         Err(e) => {
@@ -95,6 +101,7 @@ async fn main() {
             evmcli::commands::bench::run(&ctx, iterations, warmup, address).await
                 .map(|r| output::render(&r, format))
         }
+        Commands::Examples => unreachable!(), // handled above
     };
 
     let elapsed = start.elapsed();
