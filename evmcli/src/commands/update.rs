@@ -27,7 +27,7 @@ pub async fn run(check_only: bool) -> Result<UpdateResult, EvmError> {
 
     let status = self_update::backends::github::Update::configure()
         .repo_owner("199-biotechnologies")
-        .repo_name("crypto-skill")
+        .repo_name("onchain-cli")
         .bin_name("onchain")
         .current_version(current)
         .build()
@@ -60,7 +60,7 @@ pub async fn run(check_only: bool) -> Result<UpdateResult, EvmError> {
     // Perform the update
     let update_status = self_update::backends::github::Update::configure()
         .repo_owner("199-biotechnologies")
-        .repo_name("crypto-skill")
+        .repo_name("onchain-cli")
         .bin_name("onchain")
         .current_version(current)
         .build()
@@ -83,7 +83,7 @@ pub async fn check_for_update_hint() -> Option<String> {
 
     let status = self_update::backends::github::Update::configure()
         .repo_owner("199-biotechnologies")
-        .repo_name("crypto-skill")
+        .repo_name("onchain-cli")
         .bin_name("onchain")
         .current_version(current)
         .build()
