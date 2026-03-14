@@ -1,0 +1,36 @@
+[package]
+name = "evmcli"
+version = "0.1.0"
+edition = "2021"
+description = "Fast EVM CLI toolkit — replaces slow MCP servers"
+
+[[bin]]
+name = "evmcli"
+path = "src/main.rs"
+
+[lib]
+name = "evmcli"
+path = "src/lib.rs"
+
+[dependencies]
+alloy = { version = "1.7", features = ["providers", "contract", "reqwest", "dyn-abi", "json-abi", "network", "signers", "signer-local"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "fs"] }
+clap = { version = "4", features = ["derive", "env"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+comfy-table = "7"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+directories = "5"
+toml = "0.8"
+hex = "0.4"
+
+[dev-dependencies]
+wiremock = "0.6"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
