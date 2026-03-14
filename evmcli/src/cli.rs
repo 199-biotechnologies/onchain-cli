@@ -156,7 +156,7 @@ pub enum Commands {
     Examples,
 }
 
-const EXAMPLES: &str = r#"
+pub const EXAMPLES: &str = r#"
 EXAMPLES:
   # Basic queries
   evmcli balance 0xADDR                          # ETH balance

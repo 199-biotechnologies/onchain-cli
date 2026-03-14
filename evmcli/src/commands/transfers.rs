@@ -13,7 +13,7 @@ struct BlockscoutTransfersResponse {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct BlockscoutTransfer {
     #[serde(default)]
-    tx_hash: Option<String>,
+    transaction_hash: Option<String>,
     #[serde(default)]
     block_number: Option<u64>,
     #[serde(default)]
@@ -41,7 +41,7 @@ struct TransferTotal {
 struct TransferToken {
     name: Option<String>,
     symbol: Option<String>,
-    address: Option<String>,
+    address_hash: Option<String>,
     #[serde(rename = "type")]
     token_type: Option<String>,
 }
@@ -157,11 +157,11 @@ pub async fn run(ctx: &AppContext, address: &str, token_type: &str) -> Result<Tr
             .unwrap_or_else(|| "???".to_string());
 
         let token_address = t.token.as_ref()
-            .and_then(|tk| tk.address.clone())
+            .and_then(|tk| tk.address_hash.clone())
             .unwrap_or_default();
 
         TransferSummary {
-            tx_hash: t.tx_hash.clone().unwrap_or_default(),
+            tx_hash: t.transaction_hash.clone().unwrap_or_default(),
             block: t.block_number,
             timestamp: t.timestamp.clone(),
             from,
