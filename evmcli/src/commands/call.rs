@@ -1,3 +1,4 @@
+use alloy::dyn_abi::{DynSolType, DynSolValue};
 use alloy::primitives::Address;
 use alloy::providers::Provider;
 use comfy_table::Table;
@@ -30,23 +31,73 @@ impl Tableable for CallResult {
     }
 }
 
-pub async fn run(ctx: &AppContext, address: &str, sig: &str, _args: &[String]) -> Result<CallResult, EvmError> {
+/// Parse a function signature like "owner()(address)" or "balanceOf(address)(uint256)"
+/// Returns (full_input_sig, input_param_types, output_param_types)
+fn parse_sig(sig: &str) -> Result<(String, Vec<String>, Vec<String>), EvmError> {
+    // Find the split point: ")(" separating input from output
+    let (input_sig, output_types_str) = if let Some(pos) = sig.find(")(") {
+        let input = &sig[..=pos]; // e.g. "owner()" or "balanceOf(address)"
+        let output = &sig[pos+2..sig.len()-1]; // e.g. "address" or "uint256"
+        (input.to_string(), output.to_string())
+    } else {
+        (sig.to_string(), String::new())
+    };
+
+    // Parse input params from "funcName(type1,type2)"
+    let input_params = if let Some(start) = input_sig.find('(') {
+        let params_str = &input_sig[start+1..input_sig.len()-1];
+        if params_str.is_empty() {
+            vec![]
+        } else {
+            params_str.split(',').map(|s| s.trim().to_string()).collect()
+        }
+    } else {
+        vec![]
+    };
+
+    let output_params = if output_types_str.is_empty() {
+        vec![]
+    } else {
+        output_types_str.split(',').map(|s| s.trim().to_string()).collect()
+    };
+
+    Ok((input_sig, input_params, output_params))
+}
+
+fn encode_arg(type_str: &str, value: &str) -> Result<DynSolValue, EvmError> {
+    let ty: DynSolType = type_str.parse()
+        .map_err(|e| EvmError::validation(format!("Invalid type '{type_str}': {e}")))?;
+
+    ty.coerce_str(value)
+        .map_err(|e| EvmError::validation(format!("Cannot encode '{value}' as {type_str}: {e}")))
+}
+
+pub async fn run(ctx: &AppContext, address: &str, sig: &str, args: &[String]) -> Result<CallResult, EvmError> {
     let addr: Address = address.parse()
         .map_err(|_| EvmError::validation(format!("Invalid address: {address}")))?;
 
-    // Parse function signature like "owner()(address)" or "balanceOf(address)(uint256)"
-    // Split on ")(" to get input sig and output types
-    let (func_sig, output_types) = if let Some(pos) = sig.find(")(") {
-        let input_sig = &sig[..=pos]; // e.g. "owner()"
-        let output = &sig[pos+1..];  // e.g. "(address)"
-        (input_sig.to_string(), Some(output.to_string()))
-    } else {
-        (sig.to_string(), None)
-    };
+    let (input_sig, input_types, output_types) = parse_sig(sig)?;
 
-    // Encode the function call using keccak256 of the signature
-    let selector = alloy::primitives::keccak256(func_sig.as_bytes());
-    let calldata = selector[..4].to_vec();
+    if input_types.len() != args.len() {
+        return Err(EvmError::validation(format!(
+            "Expected {} args for '{}', got {}",
+            input_types.len(), input_sig, args.len()
+        )));
+    }
+
+    // Build calldata: selector + ABI-encoded args
+    let selector = &alloy::primitives::keccak256(input_sig.as_bytes())[..4];
+    let mut calldata = selector.to_vec();
+
+    if !args.is_empty() {
+        let encoded_args: Vec<DynSolValue> = input_types.iter()
+            .zip(args.iter())
+            .map(|(t, v)| encode_arg(t, v))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let encoded = DynSolValue::Tuple(encoded_args).abi_encode_params();
+        calldata.extend_from_slice(&encoded);
+    }
 
     let tx = alloy::rpc::types::TransactionRequest::default()
         .to(addr)
@@ -57,9 +108,9 @@ pub async fn run(ctx: &AppContext, address: &str, sig: &str, _args: &[String]) -
 
     let result_hex = format!("0x{}", hex::encode(&result));
 
-    // Try to decode simple types
-    let decoded = if let Some(ref out_types) = output_types {
-        decode_simple_output(&result, out_types)
+    // Decode output using dyn-abi
+    let decoded = if !output_types.is_empty() {
+        decode_output(&result, &output_types)
     } else {
         None
     };
@@ -73,30 +124,25 @@ pub async fn run(ctx: &AppContext, address: &str, sig: &str, _args: &[String]) -
     })
 }
 
-fn decode_simple_output(data: &[u8], types: &str) -> Option<String> {
-    if data.len() < 32 {
+fn decode_output(data: &[u8], types: &[String]) -> Option<String> {
+    if data.is_empty() {
         return None;
     }
-    match types.trim() {
-        "(address)" => {
-            if data.len() >= 32 {
-                let addr = Address::from_slice(&data[12..32]);
-                Some(format!("{addr}"))
-            } else {
-                None
-            }
-        }
-        "(uint256)" => {
-            let val = alloy::primitives::U256::from_be_slice(data);
-            Some(val.to_string())
-        }
-        "(bool)" => {
-            let val = data[31] != 0;
-            Some(val.to_string())
-        }
-        "(uint8)" => {
-            Some(data[31].to_string())
-        }
-        _ => None,
+
+    let sol_types: Vec<DynSolType> = types.iter()
+        .filter_map(|t| t.parse::<DynSolType>().ok())
+        .collect();
+
+    if sol_types.len() != types.len() {
+        return None;
+    }
+
+    if sol_types.len() == 1 {
+        let decoded = sol_types[0].abi_decode(data).ok()?;
+        Some(format!("{decoded:?}"))
+    } else {
+        let tuple_type = DynSolType::Tuple(sol_types);
+        let decoded = tuple_type.abi_decode_params(data).ok()?;
+        Some(format!("{decoded:?}"))
     }
 }

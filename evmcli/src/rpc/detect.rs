@@ -7,7 +7,7 @@ use tokio::time::timeout;
 
 const CACHE_TTL_SECS: u64 = 30;
 const LOCAL_PROBE_TIMEOUT_MS: u64 = 200;
-const PUBLIC_PROBE_DELAY_MS: u64 = 40;
+const PUBLIC_PROBE_TIMEOUT_MS: u64 = 2000;
 
 /// Select the best RPC endpoint using happy-eyeballs probing with disk cache.
 pub async fn select_endpoint(
@@ -26,7 +26,7 @@ pub async fn select_endpoint(
         return Ok(cached);
     }
 
-    // 3. Happy-eyeballs probe
+    // 3. Happy-eyeballs probe: race local vs public
     let winner = probe_endpoints(chain, http).await?;
     write_cache(chain.chain_id, &winner);
     Ok(winner)
@@ -35,25 +35,33 @@ pub async fn select_endpoint(
 async fn probe_endpoints(chain: &ChainConfig, http: &reqwest::Client) -> Result<String, EvmError> {
     let local_url = chain.local_rpc.to_string();
     let public_url = chain.public_rpc.to_string();
-    let expected_chain_id = chain.chain_id;
+    let chain_id = chain.chain_id;
 
-    // Try local first with a short timeout
-    let local_result = {
-        let http = http.clone();
-        let url = local_url.clone();
-        probe_rpc(&http, &url, expected_chain_id).await
-    };
+    // Race: local (200ms timeout) vs public (40ms delayed start, 2s timeout)
+    let local_http = http.clone();
+    let local = local_url.clone();
+    let local_handle = tokio::spawn(async move {
+        probe_rpc(&local_http, &local, chain_id, LOCAL_PROBE_TIMEOUT_MS).await
+    });
 
-    if local_result.is_ok() {
+    let public_http = http.clone();
+    let public = public_url.clone();
+    let public_handle = tokio::spawn(async move {
+        // 40ms head start for local
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        probe_rpc(&public_http, &public, chain_id, PUBLIC_PROBE_TIMEOUT_MS).await
+    });
+
+    // Wait for both, pick the first success
+    let (local_res, public_res) = tokio::join!(local_handle, public_handle);
+
+    // Prefer local if it succeeded
+    if let Ok(Ok(())) = local_res {
         tracing::info!("Using local RPC: {local_url}");
         return Ok(local_url);
     }
 
-    // Local failed/timed out, try public
-    tracing::debug!("Local RPC unavailable, trying public...");
-    let public_result = probe_rpc(http, &public_url, expected_chain_id).await;
-
-    if public_result.is_ok() {
+    if let Ok(Ok(())) = public_res {
         tracing::info!("Using public RPC: {public_url}");
         return Ok(public_url);
     }
@@ -61,7 +69,7 @@ async fn probe_endpoints(chain: &ChainConfig, http: &reqwest::Client) -> Result<
     Err(EvmError::rpc("All RPC endpoints failed"))
 }
 
-async fn probe_rpc(http: &reqwest::Client, url: &str, expected_chain_id: u64) -> Result<(), ()> {
+async fn probe_rpc(http: &reqwest::Client, url: &str, expected_chain_id: u64, timeout_ms: u64) -> Result<(), ()> {
     let body = serde_json::json!({
         "jsonrpc": "2.0",
         "method": "eth_chainId",
@@ -70,7 +78,7 @@ async fn probe_rpc(http: &reqwest::Client, url: &str, expected_chain_id: u64) ->
     });
 
     let result = timeout(
-        Duration::from_millis(LOCAL_PROBE_TIMEOUT_MS),
+        Duration::from_millis(timeout_ms),
         http.post(url).json(&body).send(),
     ).await;
 

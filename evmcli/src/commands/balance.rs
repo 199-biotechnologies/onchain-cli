@@ -97,8 +97,9 @@ pub async fn run(ctx: &AppContext, address: &str, token: Option<&str>) -> Result
             );
 
             let balance = balance_res.map_err(|e| EvmError::rpc(format!("balanceOf failed: {e}")))?;
-            let decimals = decimals_res.map_err(|e| EvmError::rpc(format!("decimals failed: {e}")))?;
-            let symbol = symbol_res.map_err(|e| EvmError::rpc(format!("symbol failed: {e}")))?;
+            // Graceful fallback if symbol/decimals revert (non-standard tokens)
+            let decimals = decimals_res.unwrap_or(18);
+            let symbol = symbol_res.unwrap_or_else(|_| "???".to_string());
 
             Ok(BalanceResult {
                 address: format!("{addr}"),

@@ -97,7 +97,10 @@ pub async fn run(_ctx: &AppContext, data: &str) -> Result<DecodeResult, EvmError
 
 async fn lookup_4byte(selector: &str) -> Option<String> {
     let url = format!("https://api.openchain.xyz/signature-database/v1/lookup?function={selector}");
-    let resp = reqwest::get(&url).await.ok()?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build().ok()?;
+    let resp = client.get(&url).send().await.ok()?;
     let json: serde_json::Value = resp.json().await.ok()?;
     let results = json.get("result")?.get("function")?.get(selector)?;
     results.as_array()?.first()?.get("name")?.as_str().map(|s| s.to_string())

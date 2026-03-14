@@ -37,9 +37,14 @@ fn cache_dir(chain_id: u64) -> Option<PathBuf> {
     })
 }
 
+fn sanitize_address(address: &str) -> String {
+    // Only allow hex chars and 0x prefix — prevent path traversal
+    address.chars().filter(|c| c.is_ascii_hexdigit() || *c == 'x' || *c == 'X').collect::<String>().to_lowercase()
+}
+
 fn read_cached_abi(chain_id: u64, address: &str) -> Option<(serde_json::Value, PathBuf)> {
     let dir = cache_dir(chain_id)?;
-    let path = dir.join(format!("{}.json", address.to_lowercase()));
+    let path = dir.join(format!("{}.json", sanitize_address(address)));
     let content = std::fs::read_to_string(&path).ok()?;
     let abi: serde_json::Value = serde_json::from_str(&content).ok()?;
     Some((abi, path))
@@ -48,7 +53,7 @@ fn read_cached_abi(chain_id: u64, address: &str) -> Option<(serde_json::Value, P
 fn write_cached_abi(chain_id: u64, address: &str, abi: &serde_json::Value) -> Option<PathBuf> {
     let dir = cache_dir(chain_id)?;
     std::fs::create_dir_all(&dir).ok()?;
-    let path = dir.join(format!("{}.json", address.to_lowercase()));
+    let path = dir.join(format!("{}.json", sanitize_address(address)));
     std::fs::write(&path, serde_json::to_string_pretty(abi).ok()?).ok()?;
     Some(path)
 }
@@ -67,8 +72,8 @@ pub async fn run(ctx: &AppContext, address: &str) -> Result<AbiResult, EvmError>
         });
     }
 
-    // Fetch from Blockscout
-    let url = format!("{}/api?module=contract&action=getabi&address={}",
+    // Fetch from Blockscout (explorer_api_url already ends with /api)
+    let url = format!("{}?module=contract&action=getabi&address={}",
         ctx.chain.explorer_api_url(), address);
 
     let resp = ctx.http.get(&url).send().await
