@@ -26,6 +26,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 directories = "5"
 toml = "0.8"
 hex = "0.4"
+self_update = { version = "0.43", features = ["rustls"] }
 
 [dev-dependencies]
 wiremock = "0.6"

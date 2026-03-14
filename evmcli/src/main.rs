@@ -20,10 +20,23 @@ async fn main() {
 
     let start = Instant::now();
 
-    // Handle examples command before building context (no RPC needed)
-    if matches!(cli.command, Commands::Examples) {
-        println!("{}", onchain::cli::EXAMPLES);
-        return;
+    // Handle commands that don't need RPC context
+    match &cli.command {
+        Commands::Examples => {
+            println!("{}", onchain::cli::EXAMPLES);
+            return;
+        }
+        Commands::Update { check } => {
+            match onchain::commands::update::run(*check).await {
+                Ok(r) => output::render(&r, format),
+                Err(e) => {
+                    output::render_error(&e, format);
+                    process::exit(e.exit_code());
+                }
+            }
+            return;
+        }
+        _ => {}
     }
 
     let ctx = match AppContext::new(&cli).await {
@@ -101,7 +114,7 @@ async fn main() {
             onchain::commands::bench::run(&ctx, iterations, warmup, address).await
                 .map(|r| output::render(&r, format))
         }
-        Commands::Examples => unreachable!(), // handled above
+        Commands::Examples | Commands::Update { .. } => unreachable!(), // handled above
     };
 
     let elapsed = start.elapsed();

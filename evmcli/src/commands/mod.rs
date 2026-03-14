@@ -14,3 +14,4 @@ pub mod storage;
 pub mod trace;
 pub mod transfers;
 pub mod tx;
+pub mod update;

@@ -152,6 +152,13 @@ pub enum Commands {
         address: String,
     },
 
+    /// Check for updates and self-update
+    Update {
+        /// Only check, don't install
+        #[arg(long)]
+        check: bool,
+    },
+
     /// Show investigation examples and forensic workflow
     Examples,
 }
