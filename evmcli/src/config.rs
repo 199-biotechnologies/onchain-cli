@@ -26,7 +26,7 @@ pub const CHAINS: &[ChainConfig] = &[
         name: "arbitrum",
         chain_id: 42161,
         public_rpc: "https://arb1.arbitrum.io/rpc",
-        local_rpc: "http://127.0.0.1:8547",
+        local_rpc: "http://127.0.0.1:18547",
         explorer_url: "arbitrum.blockscout.com",
         native_symbol: "ETH",
         native_decimals: 18,

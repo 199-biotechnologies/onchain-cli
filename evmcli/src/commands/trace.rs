@@ -100,7 +100,37 @@ pub async fn run(ctx: &AppContext, hash: &str) -> Result<TraceResult, EvmError> 
     let _tx_hash: B256 = hash.parse()
         .map_err(|_| EvmError::validation(format!("Invalid tx hash: {hash}")))?;
 
-    // Use raw JSON-RPC for debug_traceTransaction (Alloy doesn't have a typed method for this)
+    // Try the current RPC first, then fallback to local node if it fails
+    let rpc_url = ctx.rpc_url.clone();
+    let local_rpc = ctx.chain.local_rpc.to_string();
+
+    match try_trace(&ctx.http, &rpc_url, hash).await {
+        Ok((trace_resp, used_rpc)) => {
+            return parse_trace_response(trace_resp, hash, &used_rpc);
+        }
+        Err(_) if rpc_url != local_rpc => {
+            // Primary RPC doesn't support trace — try local node (SSH tunnel)
+            eprintln!("Public RPC doesn't support trace. Trying local node at {}...", local_rpc);
+            match try_trace(&ctx.http, &local_rpc, hash).await {
+                Ok((trace_resp, used_rpc)) => {
+                    return parse_trace_response(trace_resp, hash, &used_rpc);
+                }
+                Err(_) => {
+                    return Err(EvmError::Rpc {
+                        code: "rpc.trace_unsupported",
+                        message: format!(
+                            "debug_traceTransaction not available. Tried:\n  1. {} (no debug API)\n  2. {} (not reachable — is SSH tunnel running?)\n\nFix: run 'ssh -fN mev' to start the tunnel to your EC2 archive node.",
+                            rpc_url, local_rpc
+                        ),
+                    });
+                }
+            }
+        }
+        Err(e) => return Err(e),
+    }
+}
+
+async fn try_trace(http: &reqwest::Client, rpc_url: &str, hash: &str) -> Result<(serde_json::Value, String), EvmError> {
     let body = serde_json::json!({
         "jsonrpc": "2.0",
         "method": "debug_traceTransaction",
@@ -108,30 +138,28 @@ pub async fn run(ctx: &AppContext, hash: &str) -> Result<TraceResult, EvmError> 
         "id": 1
     });
 
-    let resp = ctx.http.post(&ctx.rpc_url)
+    let resp = http.post(rpc_url)
         .json(&body)
         .send()
         .await
-        .map_err(|e| EvmError::rpc(format!("debug_traceTransaction request failed: {e}")))?;
+        .map_err(|e| EvmError::rpc(format!("trace request to {} failed: {e}", rpc_url)))?;
 
     if !resp.status().is_success() {
-        return Err(EvmError::rpc(format!(
-            "debug_traceTransaction returned HTTP {}. This requires an archive node with debug API enabled.",
-            resp.status()
-        )));
+        return Err(EvmError::rpc(format!("trace returned HTTP {}", resp.status())));
     }
 
     let trace_resp: serde_json::Value = resp.json().await
         .map_err(|e| EvmError::rpc(format!("Failed to parse trace response: {e}")))?;
 
-    // Check for JSON-RPC error
-    if let Some(error) = trace_resp.get("error") {
-        let msg = error.get("message").and_then(|m| m.as_str()).unwrap_or("unknown error");
-        return Err(EvmError::Rpc {
-            code: "rpc.trace_unsupported",
-            message: format!("debug_traceTransaction failed: {msg}. This requires an archive node (local node or paid RPC like Alchemy/QuickNode)."),
-        });
+    if trace_resp.get("error").is_some() {
+        let msg = trace_resp["error"]["message"].as_str().unwrap_or("unsupported");
+        return Err(EvmError::rpc(msg.to_string()));
     }
+
+    Ok((trace_resp, rpc_url.to_string()))
+}
+
+fn parse_trace_response(trace_resp: serde_json::Value, hash: &str, rpc_url: &str) -> Result<TraceResult, EvmError> {
 
     let frame: TraceFrame = serde_json::from_value(
         trace_resp.get("result").cloned().unwrap_or(serde_json::Value::Null)
@@ -144,6 +172,6 @@ pub async fn run(ctx: &AppContext, hash: &str) -> Result<TraceResult, EvmError> 
         hash: hash.to_string(),
         call_count: calls.len(),
         calls,
-        rpc_endpoint: ctx.rpc_url.clone(),
+        rpc_endpoint: rpc_url.to_string(),
     })
 }
